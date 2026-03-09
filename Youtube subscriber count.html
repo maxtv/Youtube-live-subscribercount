@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Subscriber Count</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111;
+      --red: #ff2b2b;
+      --red-dim: #7a1010;
+      --white: #f0ece4;
+      --muted: #555;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--white);
+      font-family: 'DM Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* Noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0.4;
+    }
+
+    .container {
+      text-align: center;
+      padding: 2rem;
+      animation: fadeIn 1s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .yt-icon {
+      margin-bottom: 1.5rem;
+    }
+
+    .yt-icon svg {
+      width: 52px;
+      height: 52px;
+      filter: drop-shadow(0 0 12px var(--red));
+    }
+
+    .label {
+      font-size: 0.7rem;
+      letter-spacing: 0.25em;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .channel-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      letter-spacing: 0.08em;
+      color: var(--white);
+      margin-bottom: 2.5rem;
+      opacity: 0.85;
+    }
+
+    .count-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    .count-wrapper::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border: 1px solid var(--red-dim);
+      pointer-events: none;
+    }
+
+    .count-wrapper::after {
+      content: '';
+      position: absolute;
+      top: 6px; left: 6px; right: -6px; bottom: -6px;
+      border: 1px solid var(--red-dim);
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    .count {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(5rem, 18vw, 11rem);
+      line-height: 1;
+      letter-spacing: 0.04em;
+      color: var(--white);
+      padding: 1.5rem 3rem;
+      display: block;
+      transition: color 0.3s ease;
+      min-width: 320px;
+    }
+
+    .count.updated {
+      color: var(--red);
+    }
+
+    .meta {
+      margin-top: 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--red);
+      animation: pulse 2s infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255,43,43,0.4); }
+      50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(255,43,43,0); }
+    }
+
+    .status {
+      transition: color 0.3s ease;
+    }
+
+    .status.error {
+      color: var(--red);
+    }
+
+    .progress-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      background: var(--red);
+      width: 0%;
+      transition: width linear;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="yt-icon">
+      <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="48" height="48" rx="12" fill="#ff2b2b"/>
+        <path d="M34.5 24L19.5 33V15L34.5 24Z" fill="white"/>
+      </svg>
+    </div>
+
+    <div class="label">YouTube Channel</div>
+    <div class="channel-name" id="channelName">Loading...</div>
+
+    <div class="count-wrapper">
+      <span class="count" id="subCount">—</span>
+    </div>
+
+    <div class="label" style="margin-top: 1rem;">subscribers</div>
+
+    <div class="meta">
+      <div class="pulse-dot"></div>
+      <span class="status" id="status">Fetching data...</span>
+    </div>
+  </div>
+
+  <div class="progress-bar" id="progressBar"></div>
+
+  <script>
+    // ─── CONFIG ───────────────────────────────────────────────
+    const API_KEY    = 'AIzaSyBWYG9GdkbA8F6-NYLgMiWGdJOgZFIj86w';
+    const CHANNEL_ID = 'UC2S-PeY_BZfLIJGZCN466Sg';
+    const INTERVAL   = 30; // sekunder mellom hver oppdatering
+    // ─────────────────────────────────────────────────────────
+
+    const subCountEl   = document.getElementById('subCount');
+    const statusEl     = document.getElementById('status');
+    const channelEl    = document.getElementById('channelName');
+    const progressBar  = document.getElementById('progressBar');
+
+    let previousCount  = null;
+    let progressTimer  = null;
+
+    function formatNumber(n) {
+      return parseInt(n).toLocaleString('no-NO');
+    }
+
+    function startProgress() {
+      clearInterval(progressTimer);
+      progressBar.style.transition = 'none';
+      progressBar.style.width = '0%';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          progressBar.style.transition = `width ${INTERVAL}s linear`;
+          progressBar.style.width = '100%';
+        });
+      });
+    }
+
+    async function fetchSubscribers() {
+      const url = `https://www.googleapis.com/youtube/v3/channels?part=statistics,snippet&id=${CHANNEL_ID}&key=${API_KEY}`;
+      try {
+        const res  = await fetch(url);
+        const data = await res.json();
+
+        if (!data.items || data.items.length === 0) {
+          statusEl.textContent = 'Kanal ikke funnet – sjekk Channel ID';
+          statusEl.classList.add('error');
+          return;
+        }
+
+        const item  = data.items[0];
+        const count = item.statistics.subscriberCount;
+        const name  = item.snippet.title;
+
+        channelEl.textContent = name;
+
+        if (previousCount !== null && count !== previousCount) {
+          subCountEl.classList.add('updated');
+          setTimeout(() => subCountEl.classList.remove('updated'), 1000);
+        }
+
+        subCountEl.textContent = formatNumber(count);
+        previousCount = count;
+
+        const now = new Date().toLocaleTimeString('no-NO');
+        statusEl.textContent = `Sist oppdatert ${now}`;
+        statusEl.classList.remove('error');
+
+      } catch (err) {
+        statusEl.textContent = 'Feil ved henting av data';
+        statusEl.classList.add('error');
+        console.error(err);
+      }
+
+      startProgress();
+    }
+
+    fetchSubscribers();
+    setInterval(fetchSubscribers, INTERVAL * 1000);
+  </script>
+</body>
+</html>
